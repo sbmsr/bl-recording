@@ -1,15 +1,8 @@
-//
-//  ContentView.swift
-//  WordChaser
-//
-//  Created by Gus on 15/02/25.
-//
-
 import SwiftUI
 
 struct ContentView: View {
     @StateObject private var audioViewModel = AudioViewModel()
-    
+
     var body: some View {
         VStack {
             Text("Audio Recorder")
@@ -36,7 +29,7 @@ struct ContentView: View {
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }
-                
+
                 Button(action: {
                     if audioViewModel.isPlaying {
                         audioViewModel.stopPlaying()
@@ -44,7 +37,7 @@ struct ContentView: View {
                         audioViewModel.startPlaying()
                     }
                 }) {
-                    Text(audioViewModel.isPlaying ? "Stop Playing" : "Play Recording")
+                    Text(audioViewModel.isPlaying ? "Stop Playing" : "Play Latest Recording")
                         .padding()
                         .background(audioViewModel.isPlaying ? Color.red : Color.blue)
                         .foregroundColor(.white)
@@ -52,12 +45,29 @@ struct ContentView: View {
                 }
             }
             .padding()
+
+            List(audioViewModel.recordedFiles, id: \.self) { file in
+                HStack {
+                    Text(file.lastPathComponent)
+                    Spacer()
+                    Text(getFileSizeFormatted(for: file))
+                        .foregroundColor(.gray)
+                }
+            }
         }
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+
+func getFileSizeFormatted(for file: URL) -> String {
+    do {
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        let fileSize = attributes[.size] as? Int64 ?? 0
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: fileSize)
+    } catch {
+        return "Unknown"
     }
 }
