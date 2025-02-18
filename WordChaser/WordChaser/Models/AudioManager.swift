@@ -10,17 +10,54 @@ class AudioManager: NSObject {
         super.init()
         configureAudioSession()
         requestMicrophonePermission()
+        
+        // Register for audio session interruption notifications
+        NotificationCenter.default.addObserver(self,
+                                             selector: #selector(handleAudioSessionInterruption),
+                                             name: AVAudioSession.interruptionNotification,
+                                             object: nil)
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - Audio Session Configuration
     
     private func configureAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, options: .mixWithOthers)
-            try AVAudioSession.sharedInstance().setActive(true)
-            print("Audio session configured successfully.")
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord,
+                                  mode: .default,
+                                  options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
+            try session.setActive(true)
+            print("Audio session configured successfully for background recording.")
         } catch {
             print("Failed to configure audio session: \(error)")
+        }
+    }
+    
+    @objc private func handleAudioSessionInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            // Audio session interrupted (e.g., phone call)
+            print("Audio session interrupted")
+        case .ended:
+            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            if options.contains(.shouldResume) {
+                // Interruption ended - resume audio session
+                try? AVAudioSession.sharedInstance().setActive(true)
+                print("Audio session resumed after interruption")
+            }
+        @unknown default:
+            break
         }
     }
     
