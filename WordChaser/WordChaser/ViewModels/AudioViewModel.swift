@@ -14,6 +14,13 @@ class AudioViewModel: ObservableObject {
             print("AudioViewModel: Playback Finished. Updating UI...")
             self.isPlaying = false
         }
+        
+        audioService.onNewChunkSaved = { [weak self] in
+            print("AudioViewModel: New chunk saved, updating file list...")
+            DispatchQueue.main.async {
+                self?.recordedFiles = self?.audioService.getRecordedFiles() ?? []
+            }
+        }
     }
 
     func startRecording() {

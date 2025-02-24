@@ -5,6 +5,12 @@ class AudioService {
     private let audioManager = AudioManager.shared
     private let audioRecorder = AudioRecorder()
     private let audioPlayer = AudioPlayer()
+    
+    var onNewChunkSaved: (() -> Void)? {
+        didSet {
+            audioRecorder.onNewChunkSaved = onNewChunkSaved
+        }
+    }
 
     var onPlaybackFinished: (() -> Void)? {
         get { audioManager.onPlaybackFinished }

@@ -8,11 +8,16 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     private var chunkTimer: Timer?
     private let chunkDuration: TimeInterval = 10 // 10 second chunks
     private var isSessionConfigured = false
+    private var currentRecordingURL: URL?
+    private var shouldStartNewChunk = false
+    private var isStopping = false  // New flag to track stopping state
     
     private let audioManager = AudioManager.shared
+    var onNewChunkSaved: (() -> Void)?
 
     func startRecording() -> Result<Void, Error> {
         print("AudioRecorder: Starting Recording...")
+        recordedFiles = []  // Reset files list when starting new recording
         
         // Configure audio session only once at the start
         if !isSessionConfigured {
@@ -33,6 +38,8 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     private func startNewChunk() -> Result<Void, Error> {
         recordingStartTime = Date()
         let newFileName = generateAudioFilename()
+        currentRecordingURL = newFileName
+        shouldStartNewChunk = false
         
         let settings = AudioSettings.defaultSettings
         
@@ -43,24 +50,26 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             audioRecorder?.delegate = self
             audioRecorder?.prepareToRecord()
             audioRecorder?.record()
-            recordedFiles.append(newFileName)
             print("AudioRecorder: Recording Started")
             
             // Start timer for next chunk
             chunkTimer?.invalidate()
             chunkTimer = Timer.scheduledTimer(withTimeInterval: chunkDuration, repeats: false) { [weak self] _ in
-                self?.startNextChunk()
+                self?.handleChunkTimeout()
             }
         }
     }
     
+    private func handleChunkTimeout() {
+        print("AudioRecorder: Chunk timeout, preparing for next chunk...")
+        shouldStartNewChunk = true
+        audioRecorder?.stop()  // This will trigger audioRecorderDidFinishRecording
+    }
+    
     private func startNextChunk() {
-        print("AudioRecorder: Starting new chunk...")
-        if let recorder = audioRecorder {
-            recorder.stop()
-            if case .failure(let error) = startNewChunk() {
-                print("AudioRecorder: Failed to start new chunk: \(error)")
-            }
+        print("AudioRecorder: Starting next chunk...")
+        if case .failure(let error) = startNewChunk() {
+            print("AudioRecorder: Failed to start new chunk: \(error)")
         }
     }
 
@@ -68,37 +77,12 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         print("AudioRecorder: Stop Recording...")
         chunkTimer?.invalidate()
         chunkTimer = nil
+        shouldStartNewChunk = false
+        isStopping = true  // Set stopping flag
+        
+        // Stop the current recording - this will trigger audioRecorderDidFinishRecording
         audioRecorder?.stop()
-        audioRecorder = nil
-        isSessionConfigured = false
-
-        // Deactivate audio session
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            print("Warning: Failed to deactivate audio session: \(error)")
-        }
-
-        Thread.sleep(forTimeInterval: 0.5)
-
-        guard let lastFile = recordedFiles.last else {
-            print("Error: No recorded files found.")
-            return .failure(NSError(domain: "AudioRecorder", code: -1, userInfo: [NSLocalizedDescriptionKey: "No file to save."]))
-        }
-
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: lastFile.path)
-            let fileSize = attributes[.size] as? Int64 ?? 0
-            print("AudioRecorder: File size: \(fileSize) bytes")
-            guard fileSize > 0 else {
-                print("Error: File is empty.")
-                return .failure(NSError(domain: "AudioRecorder", code: -1, userInfo: [NSLocalizedDescriptionKey: "File is empty."]))
-            }
-        } catch {
-            print("Error Checking File Attributes: \(error)")
-            return .failure(error)
-        }
-
+        
         return .success(())
     }
 
@@ -118,6 +102,55 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         print("AudioRecorder: Recording chunk finished with success: \(flag)")
+        
+        if flag, let url = currentRecordingURL {
+            // Give the file system a moment to finish writing
+            Thread.sleep(forTimeInterval: 0.1)
+            
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+                print("AudioRecorder: Chunk file size: \(fileSize) bytes")
+                
+                if fileSize > 0 {
+                    recordedFiles.append(url)
+                    onNewChunkSaved?()
+                    print("AudioRecorder: Successfully saved chunk: \(url.lastPathComponent)")
+                    
+                    if shouldStartNewChunk {
+                        startNextChunk()
+                    } else if isStopping {
+                        // Clean up only after the final chunk is saved
+                        audioRecorder = nil
+                        isSessionConfigured = false
+                        currentRecordingURL = nil
+                        isStopping = false
+                        
+                        // Deactivate audio session
+                        do {
+                            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                        } catch {
+                            print("Warning: Failed to deactivate audio session: \(error)")
+                        }
+                    }
+                } else {
+                    print("AudioRecorder: Skipping empty chunk")
+                    if shouldStartNewChunk {
+                        startNextChunk()
+                    }
+                }
+            } catch {
+                print("AudioRecorder: Error checking chunk file: \(error)")
+                if shouldStartNewChunk {
+                    startNextChunk()
+                }
+            }
+        } else {
+            print("AudioRecorder: Recording failed or no current URL")
+            if shouldStartNewChunk {
+                startNextChunk()
+            }
+        }
     }
 }
 
