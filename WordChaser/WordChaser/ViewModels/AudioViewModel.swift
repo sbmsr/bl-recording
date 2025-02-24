@@ -7,6 +7,7 @@ class AudioViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var errorMessage: String?
     @Published var recordedFiles: [URL] = []
+    private var selectedRecordingURL: URL?
 
     init() {
         audioService.onPlaybackFinished = { [unowned self] in
@@ -40,9 +41,19 @@ class AudioViewModel: ObservableObject {
         }
     }
 
-    func startPlaying() {
+    func startPlaying(url: URL? = nil) {
         print("AudioViewModel: Starting playback...")
-        if case .failure(let error) = audioService.startPlaying() {
+        let fileToPlay = url ?? recordedFiles.last
+        
+        guard let recordingURL = fileToPlay else {
+            errorMessage = "No recording file available"
+            print("Error: No recording file available")
+            return
+        }
+        
+        selectedRecordingURL = recordingURL
+        
+        if case .failure(let error) = audioService.startPlaying(url: recordingURL) {
             errorMessage = error.localizedDescription
             print("Error starting playback: \(error.localizedDescription)")
         } else {

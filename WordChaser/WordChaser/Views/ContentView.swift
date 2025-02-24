@@ -4,60 +4,50 @@ struct ContentView: View {
     @StateObject private var audioViewModel = AudioViewModel()
 
     var body: some View {
-        VStack {
-            Text("Audio Recorder")
-                .font(.largeTitle)
+        NavigationView {
+            VStack {
+                Text("Audio Recorder")
+                    .font(.largeTitle)
+                    .padding()
+
+                if let errorMessage = audioViewModel.errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .padding()
+                }
+
+                HStack {
+                    Button(action: {
+                        if audioViewModel.isRecording {
+                            audioViewModel.stopRecording()
+                        } else {
+                            audioViewModel.startRecording()
+                        }
+                    }) {
+                        Text(audioViewModel.isRecording ? "Stop Recording" : "Start Recording")
+                            .padding()
+                            .background(audioViewModel.isRecording ? Color.red : Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
                 .padding()
 
-            if let errorMessage = audioViewModel.errorMessage {
-                Text(errorMessage)
-                    .foregroundColor(.red)
-                    .padding()
-            }
-
-            HStack {
-                Button(action: {
-                    if audioViewModel.isRecording {
-                        audioViewModel.stopRecording()
-                    } else {
-                        audioViewModel.startRecording()
+                List(audioViewModel.recordedFiles, id: \.self) { file in
+                    NavigationLink(destination: RecordingDetailView(recordingURL: file)) {
+                        HStack {
+                            Text(file.lastPathComponent)
+                            Spacer()
+                            Text(getFileSizeFormatted(for: file))
+                                .foregroundColor(.gray)
+                        }
                     }
-                }) {
-                    Text(audioViewModel.isRecording ? "Stop Recording" : "Start Recording")
-                        .padding()
-                        .background(audioViewModel.isRecording ? Color.red : Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-
-                Button(action: {
-                    if audioViewModel.isPlaying {
-                        audioViewModel.stopPlaying()
-                    } else {
-                        audioViewModel.startPlaying()
-                    }
-                }) {
-                    Text(audioViewModel.isPlaying ? "Stop Playing" : "Play Latest Recording")
-                        .padding()
-                        .background(audioViewModel.isPlaying ? Color.red : Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
                 }
             }
-            .padding()
-
-            List(audioViewModel.recordedFiles, id: \.self) { file in
-                HStack {
-                    Text(file.lastPathComponent)
-                    Spacer()
-                    Text(getFileSizeFormatted(for: file))
-                        .foregroundColor(.gray)
-                }
-            }
+            .navigationBarHidden(true)
         }
     }
 }
-
 
 func getFileSizeFormatted(for file: URL) -> String {
     do {
